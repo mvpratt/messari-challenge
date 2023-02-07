@@ -141,11 +141,11 @@ func main() {
 		mt[id] = totals
 	}
 
-	totalTrades := in.ID // id of the last trade to be processed
+	totalTrades := in.ID // in.ID always increments by one for each trade
 
 	// print all market totals as json
 	for _, item := range mt {
-		jsonMT, _ := json.Marshal(item)
+		jsonMT, _ := json.Marshal(item) // todo - handle error
 		fmt.Println(string(jsonMT))
 	}
 
