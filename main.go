@@ -10,11 +10,16 @@ import (
 )
 
 type MarketData struct {
-	SumSpent     float32
-	SumOfPrices  float32
-	SumOfVolumes float32
-	NumTrades    int
-	NumBuys      int
+	SumSpent               float32
+	SumOfPrices            float32
+	SumOfVolumes           float32
+	NumTrades              int
+	NumBuys                int
+	TotalVolume            float32
+	MeanPrice              float32
+	MeanVolume             float32
+	VolumeWeightedAvgPrice float32
+	PercentageBuy          float32
 }
 
 func (md *MarketData) update(in InputData) {
@@ -23,6 +28,22 @@ func (md *MarketData) update(in InputData) {
 	md.SumOfVolumes += in.Volume
 	md.NumTrades++
 	md.NumBuys += boolToInt(in.IsBuy)
+	md.TotalVolume += in.Volume
+
+	md.MeanPrice = md.SumOfPrices / float32(md.NumTrades) // NumTrades will always be >= 1
+	md.MeanVolume = md.SumOfVolumes / float32(md.NumTrades)
+	md.VolumeWeightedAvgPrice = calcVWAP(md.SumSpent, md.TotalVolume+in.Volume)
+	md.PercentageBuy = calcPercentage(md.NumBuys, md.NumTrades)
+}
+
+func (md *MarketData) getMarketTotals() MarketTotals {
+	return MarketTotals{
+		TotalVolume:            md.TotalVolume,
+		MeanPrice:              md.MeanPrice,
+		MeanVolume:             md.MeanVolume,
+		VolumeWeightedAvgPrice: md.VolumeWeightedAvgPrice,
+		PercentageBuy:          md.PercentageBuy,
+	}
 }
 
 type MarketTotals struct {
@@ -31,14 +52,6 @@ type MarketTotals struct {
 	MeanVolume             float32 `json:"mean_volume"`
 	VolumeWeightedAvgPrice float32 `json:"volume_weighted_average_price"`
 	PercentageBuy          float32 `json:"percentage_buy"`
-}
-
-func (mt *MarketTotals) update(data MarketData, in InputData) {
-	mt.TotalVolume += in.Volume
-	mt.MeanPrice = data.SumOfPrices / float32(data.NumTrades) // NumTrades will always be >= 1
-	mt.MeanVolume = data.SumOfVolumes / float32(data.NumTrades)
-	mt.VolumeWeightedAvgPrice = calcVWAP(data.SumSpent, mt.TotalVolume+in.Volume)
-	mt.PercentageBuy = calcPercentage(data.NumBuys, data.NumTrades)
 }
 
 type InputData struct {
@@ -74,8 +87,6 @@ func calcVWAP(sumSpent float32, cummulativeVolume float32) float32 {
 
 func main() {
 	startTime := time.Now()
-	//log.Printf("start time: %s\n\n", startTime)
-
 	scanner := bufio.NewScanner(os.Stdin)
 	var inputStr string
 
@@ -91,23 +102,19 @@ func main() {
 	}
 
 	md := map[int]MarketData{}
-	mt := map[int]MarketTotals{}
-
 	var in InputData
 	var data MarketData
-	var totals MarketTotals
 
 	// continuously compute and keep track of totals as new trades come in
-
 	// assumptions:
 	// valid json input, no zero values
 
+	if err := scanner.Err(); err != nil { // todo - move?
+		log.Fatal(err)
+	}
+
 	for scanner.Scan() {
 		inputStr = scanner.Text()
-		if err := scanner.Err(); err != nil {
-			log.Fatal(err)
-		}
-
 		if inputStr == "END" {
 			break
 		}
@@ -117,26 +124,21 @@ func main() {
 		data = md[in.MarketID] // todo - handle non-existent map key
 		data.update(in)
 		md[in.MarketID] = data
-
-		totals.update(data, in)
-		mt[in.MarketID] = totals
 	}
 
 	totalTrades := in.ID // in.ID always increments by one for each trade
 
 	// print all market totals as json
-	for _, item := range mt {
-		jsonMT, _ := json.Marshal(item) // todo - handle error
+	for _, item := range md {
+		jsonMT, _ := json.Marshal(item.getMarketTotals()) // todo - handle error
 		fmt.Println(string(jsonMT))
 	}
 
 	// for debug, print first market, including source data
-	resMT, _ := json.Marshal(mt[1])
 	resMD, _ := json.Marshal(md[1])
-	fmt.Println(string(resMT))
 	fmt.Println(string(resMD))
 
 	log.Printf("trade count: %d", totalTrades) // todo - off by one
-	log.Printf("market count: %d", len(mt))
+	log.Printf("market count: %d", len(md))
 	log.Printf("\n\nduration: %s", time.Since(startTime))
 }
