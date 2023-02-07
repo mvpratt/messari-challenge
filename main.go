@@ -23,7 +23,7 @@
 // }
 
 // Performance:
-// Typical: ~18 seconds on M1 Macbook Pro
+// Typical: ~16 seconds on M1 Macbook Pro
 
 package main
 
@@ -44,12 +44,28 @@ type MarketData struct {
 	NumBuys      int
 }
 
+func (md *MarketData) update(in InputData) {
+	md.SumOfPrices += in.Price
+	md.SumSpent += in.Price * in.Volume
+	md.SumOfVolumes += in.Volume
+	md.NumTrades++
+	md.NumBuys += boolToInt(in.IsBuy)
+}
+
 type MarketTotals struct {
 	TotalVolume            float32 `json:"total_volume"`
 	MeanPrice              float32 `json:"mean_price"`
 	MeanVolume             float32 `json:"mean_volume"`
 	VolumeWeightedAvgPrice float32 `json:"volume_weighted_average_price"`
 	PercentageBuy          float32 `json:"percentage_buy"`
+}
+
+func (mt *MarketTotals) update(data MarketData, in InputData) {
+	mt.TotalVolume += in.Volume
+	mt.MeanPrice = data.SumOfPrices / float32(data.NumTrades) // NumTrades will always be >= 1
+	mt.MeanVolume = data.SumOfVolumes / float32(data.NumTrades)
+	mt.VolumeWeightedAvgPrice = calcVWAP(data.SumSpent, mt.TotalVolume+in.Volume)
+	mt.PercentageBuy = calcPercentage(data.NumBuys, data.NumTrades)
 }
 
 type InputData struct {
@@ -105,7 +121,6 @@ func main() {
 	mt := map[int]MarketTotals{}
 
 	var in InputData
-	var id int
 	var data MarketData
 	var totals MarketTotals
 
@@ -126,26 +141,12 @@ func main() {
 
 		json.Unmarshal([]byte(inputStr), &in)
 
-		// todo - handle non-existent map key
-		id = in.MarketID
-		data = MarketData{
-			SumOfPrices:  md[id].SumOfPrices + in.Price,
-			SumSpent:     md[id].SumSpent + in.Price*in.Volume,
-			SumOfVolumes: md[id].SumOfVolumes + in.Volume,
-			NumTrades:    md[id].NumTrades + 1,
-			NumBuys:      md[id].NumBuys + boolToInt(in.IsBuy),
-		}
+		data = md[in.MarketID] // todo - handle non-existent map key
+		data.update(in)
+		md[in.MarketID] = data
 
-		totals = MarketTotals{
-			TotalVolume:            mt[id].TotalVolume + in.Volume,
-			MeanPrice:              data.SumOfPrices / float32(data.NumTrades), // NumTrades will always be >= 1
-			MeanVolume:             data.SumOfVolumes / float32(data.NumTrades),
-			VolumeWeightedAvgPrice: calcVWAP(data.SumSpent, mt[id].TotalVolume+in.Volume),
-			PercentageBuy:          calcPercentage(data.NumBuys, data.NumTrades),
-		}
-
-		md[id] = data
-		mt[id] = totals
+		totals.update(data, in)
+		mt[in.MarketID] = totals
 	}
 
 	totalTrades := in.ID // in.ID always increments by one for each trade
