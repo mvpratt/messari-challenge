@@ -22,6 +22,9 @@
 //	  "percentage_buy":0.50
 // }
 
+// Performance:
+// Typical: ~18 seconds on M1 Macbook Pro
+
 package main
 
 import (
@@ -107,6 +110,10 @@ func main() {
 	var totals MarketTotals
 
 	// continuously compute and keep track of totals as new trades come in
+
+	// assumptions:
+	// valid json input, no zero values
+
 	for scanner.Scan() {
 		inputStr = scanner.Text()
 		if err := scanner.Err(); err != nil {
@@ -131,7 +138,7 @@ func main() {
 
 		totals = MarketTotals{
 			TotalVolume:            mt[id].TotalVolume + in.Volume,
-			MeanPrice:              data.SumOfPrices / float32(data.NumTrades),
+			MeanPrice:              data.SumOfPrices / float32(data.NumTrades), // NumTrades will always be >= 1
 			MeanVolume:             data.SumOfVolumes / float32(data.NumTrades),
 			VolumeWeightedAvgPrice: calcVWAP(data.SumSpent, mt[id].TotalVolume+in.Volume),
 			PercentageBuy:          calcPercentage(data.NumBuys, data.NumTrades),
