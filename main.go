@@ -93,52 +93,54 @@ func main() {
 	// look for the start
 	for scanner.Scan() {
 		inputStr = scanner.Text()
-		if err := scanner.Err(); err != nil {
-			log.Println(err)
-		}
 		if inputStr == "BEGIN" {
 			break
 		}
+	}
+
+	if err := scanner.Err(); err != nil { // todo - move?
+		log.Fatal(err)
 	}
 
 	md := map[int]MarketData{}
 	var in InputData
 	var data MarketData
 
-	// continuously compute and keep track of totals as new trades come in
+	/* continuously compute and keep track of totals as new trades come in
 	// assumptions:
-	// valid json input, no zero values
-
-	if err := scanner.Err(); err != nil { // todo - move?
-		log.Fatal(err)
-	}
-
+	// - valid json input, no zero values
+	// - marketID always increments
+	*/
 	for scanner.Scan() {
 		inputStr = scanner.Text()
 		if inputStr == "END" {
 			break
 		}
 
-		json.Unmarshal([]byte(inputStr), &in)
+		_ = json.Unmarshal([]byte(inputStr), &in) // todo - check error
 
-		data = md[in.MarketID] // todo - handle non-existent map key
+		data = md[in.MarketID]
 		data.update(in)
 		md[in.MarketID] = data
 	}
 
 	totalTrades := in.ID // in.ID always increments by one for each trade
 
-	// print all market totals as json
+	dataDone := time.Since(startTime)
+
+	// print all market totals
 	for _, item := range md {
 		jsonMT, _ := json.Marshal(item.getMarketTotals()) // todo - handle error
 		fmt.Println(string(jsonMT))
 	}
 
 	// for debug, print first market, including source data
-	resMD, _ := json.Marshal(md[1])
-	fmt.Println(string(resMD))
+	// resMD, _ := json.Marshal(md[1])
+	// fmt.Println(string(resMD))
 
+	log.Print("\n\n")
 	log.Printf("trade count: %d", totalTrades) // todo - off by one
 	log.Printf("market count: %d", len(md))
-	log.Printf("\n\nduration: %s", time.Since(startTime))
+	log.Printf("time to process data: %s", dataDone)
+	log.Printf("total duration: %s", time.Since(startTime))
 }
