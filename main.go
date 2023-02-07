@@ -34,9 +34,11 @@ import (
 )
 
 type MarketData struct {
-	Prices  []float32
-	Volumes []float32
-	NumBuys int
+	SumSpent     float32
+	SumOfPrices  float32
+	SumOfVolumes float32
+	NumTrades    int
+	NumBuys      int
 }
 
 type MarketTotals struct {
@@ -55,20 +57,6 @@ type InputData struct {
 	IsBuy    bool    `json:"is_buy"`
 }
 
-func calcMean(items []float32) float32 {
-	if len(items) == 0 {
-		return 0
-	}
-	var sum float32
-
-	for _, item := range items {
-		sum += item
-	}
-
-	mean := sum / float32(len(items))
-	return mean
-}
-
 // calculates percentage num/den
 func calcPercentage(num int, den int) float32 {
 	if den == 0 {
@@ -84,13 +72,9 @@ func boolToInt(in bool) int {
 	return 0
 }
 
-func calcVWAP(prices []float32, volumes []float32, cummulativeVolume float32) float32 {
-	if cummulativeVolume == 0 || len(prices) == 0 || len(volumes) == 0 {
+func calcVWAP(sumSpent float32, cummulativeVolume float32) float32 {
+	if cummulativeVolume == 0 || sumSpent == 0 {
 		return 0
-	}
-	var sumSpent float32 = 0
-	for i, _ := range prices {
-		sumSpent += prices[i] * volumes[i]
 	}
 	vwap := sumSpent / cummulativeVolume
 	return vwap
@@ -126,10 +110,10 @@ func main() {
 	for scanner.Scan() {
 		inputStr = scanner.Text()
 		if err := scanner.Err(); err != nil {
-			log.Println(err)
+			log.Fatal(err)
 		}
 
-		if inputStr == "END" { // no more trades to process
+		if inputStr == "END" {
 			break
 		}
 
@@ -138,31 +122,31 @@ func main() {
 		// todo - handle non-existent map key
 		id = in.MarketID
 		data = MarketData{
-			Prices:  append(md[id].Prices, in.Price),
-			Volumes: append(md[id].Volumes, in.Volume),
-			NumBuys: md[id].NumBuys + boolToInt(in.IsBuy),
+			SumOfPrices:  md[id].SumOfPrices + in.Price,
+			SumSpent:     md[id].SumSpent + in.Price*in.Volume,
+			SumOfVolumes: md[id].SumOfVolumes + in.Volume,
+			NumTrades:    md[id].NumTrades + 1,
+			NumBuys:      md[id].NumBuys + boolToInt(in.IsBuy),
+		}
+
+		totals = MarketTotals{
+			TotalVolume:            mt[id].TotalVolume + in.Volume,
+			MeanPrice:              data.SumOfPrices / float32(data.NumTrades),
+			MeanVolume:             data.SumOfVolumes / float32(data.NumTrades),
+			VolumeWeightedAvgPrice: calcVWAP(data.SumSpent, mt[id].TotalVolume+in.Volume),
+			PercentageBuy:          calcPercentage(data.NumBuys, data.NumTrades),
 		}
 
 		md[id] = data
-		totals = MarketTotals{
-			TotalVolume:            mt[id].TotalVolume + in.Volume,
-			MeanPrice:              calcMean(data.Prices),
-			MeanVolume:             calcMean(data.Volumes),
-			VolumeWeightedAvgPrice: calcVWAP(md[id].Prices, md[id].Volumes, mt[id].TotalVolume+in.Volume),
-			PercentageBuy:          calcPercentage(data.NumBuys, len(data.Prices)),
-		}
-
 		mt[id] = totals
 	}
 
 	totalTrades := in.ID // id of the last trade to be processed
 
-	// todo - only calculate totals once -- is that allowed?
-
 	// print all market totals as json
 	for _, item := range mt {
 		jsonMT, _ := json.Marshal(item)
-		fmt.Println(string(jsonMT)) // todo - fix key names, make them jsonified
+		fmt.Println(string(jsonMT))
 	}
 
 	// for debug, print first market, including source data
