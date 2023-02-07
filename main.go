@@ -85,12 +85,20 @@ func calcVWAP(sumSpent float32, cummulativeVolume float32) float32 {
 	return vwap
 }
 
+func processTrade(inputStr string, md map[int]MarketData) {
+	in := InputData{}
+	_ = json.Unmarshal([]byte(inputStr), &in) // todo - check error
+
+	data := md[in.MarketID]
+	data.update(in)
+	md[in.MarketID] = data
+}
+
 func main() {
 	startTime := time.Now()
 	scanner := bufio.NewScanner(os.Stdin)
-	var inputStr string
+	inputStr := ""
 
-	// look for the start
 	for scanner.Scan() {
 		inputStr = scanner.Text()
 		if inputStr == "BEGIN" {
@@ -103,44 +111,23 @@ func main() {
 	}
 
 	md := map[int]MarketData{}
-	var in InputData
-	var data MarketData
+	totalTrades := 0
 
-	/* continuously compute and keep track of totals as new trades come in
-	// assumptions:
-	// - valid json input, no zero values
-	// - marketID always increments
-	*/
 	for scanner.Scan() {
 		inputStr = scanner.Text()
 		if inputStr == "END" {
 			break
 		}
-
-		_ = json.Unmarshal([]byte(inputStr), &in) // todo - check error
-
-		data = md[in.MarketID]
-		data.update(in)
-		md[in.MarketID] = data
+		processTrade(inputStr, md)
+		totalTrades++
 	}
 
-	totalTrades := in.ID // in.ID always increments by one for each trade
-
-	dataDone := time.Since(startTime)
-
-	// print all market totals
 	for _, item := range md {
-		jsonMT, _ := json.Marshal(item.getMarketTotals()) // todo - handle error
-		fmt.Println(string(jsonMT))
+		m, _ := json.Marshal(item.getMarketTotals()) // todo - handle error
+		fmt.Println(string(m))
 	}
 
-	// for debug, print first market, including source data
-	// resMD, _ := json.Marshal(md[1])
-	// fmt.Println(string(resMD))
-
-	log.Print("\n\n")
-	log.Printf("trade count: %d", totalTrades) // todo - off by one
+	log.Printf("\n\ntrade count: %d", totalTrades) // todo - off by one
 	log.Printf("market count: %d", len(md))
-	log.Printf("time to process data: %s", dataDone)
 	log.Printf("total duration: %s", time.Since(startTime))
 }
