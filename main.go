@@ -92,7 +92,7 @@ func processTrade(inputStr string, md map[int]MarketData) {
 	in := InputData{}
 	_ = json.Unmarshal([]byte(inputStr), &in) // todo - check error
 
-	fmt.Printf("processTrade(): %d\n", in.ID)
+	//fmt.Printf("processTrade(): %d\n", in.ID)
 	data := md[in.MarketID]
 	data.update(in)
 	md[in.MarketID] = data
@@ -119,15 +119,16 @@ func main() {
 
 	inputCh := make(chan string)
 
+	// todo -- pool of X workers pulling off of the scanner until its done
+
 	var wg sync.WaitGroup
 	wg.Add(2)
-
-	// scan goroutine
+	// scan input
 	go func() {
 		defer wg.Done()
 		for scanner.Scan() {
 			inputStr = scanner.Text()
-			fmt.Printf("scanner.Text(): %s\n", inputStr)
+			//fmt.Printf("scanner.Text(): %s\n", inputStr)
 			if inputStr == "END" {
 				break
 			}
@@ -136,14 +137,24 @@ func main() {
 		close(inputCh)
 	}()
 
-	// process goroutine
+	var wg2 sync.WaitGroup
+
+	// process trades
 	go func() {
 		defer wg.Done()
-		for val := range inputCh {
-			processTrade(val, md)
-			totalTrades++
+		for i := 1; i <= 3; i++ {
+			wg2.Add(1)
+			go func() {
+				defer wg2.Done()
+				for val := range inputCh {
+					processTrade(val, md)
+					totalTrades++
+				}
+			}()
+
 		}
 	}()
+	wg2.Wait()
 
 	// wait until done
 	wg.Wait()
