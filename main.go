@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+type InputData struct {
+	ID       int     `json:"id"`
+	MarketID int     `json:"market"`
+	Price    float32 `json:"price"`
+	Volume   float32 `json:"volume"`
+	IsBuy    bool    `json:"is_buy"`
+}
+
 type MarketData struct {
 	SumSpent               float32
 	SumOfPrices            float32
@@ -20,6 +28,14 @@ type MarketData struct {
 	MeanVolume             float32
 	VolumeWeightedAvgPrice float32
 	PercentageBuy          float32
+}
+
+type MarketTotals struct {
+	TotalVolume            float32 `json:"total_volume"`
+	MeanPrice              float32 `json:"mean_price"`
+	MeanVolume             float32 `json:"mean_volume"`
+	VolumeWeightedAvgPrice float32 `json:"volume_weighted_average_price"`
+	PercentageBuy          float32 `json:"percentage_buy"`
 }
 
 func (md *MarketData) update(in InputData) {
@@ -44,22 +60,6 @@ func (md *MarketData) getMarketTotals() MarketTotals {
 		VolumeWeightedAvgPrice: md.VolumeWeightedAvgPrice,
 		PercentageBuy:          md.PercentageBuy,
 	}
-}
-
-type MarketTotals struct {
-	TotalVolume            float32 `json:"total_volume"`
-	MeanPrice              float32 `json:"mean_price"`
-	MeanVolume             float32 `json:"mean_volume"`
-	VolumeWeightedAvgPrice float32 `json:"volume_weighted_average_price"`
-	PercentageBuy          float32 `json:"percentage_buy"`
-}
-
-type InputData struct {
-	ID       int     `json:"id"`
-	MarketID int     `json:"market"`
-	Price    float32 `json:"price"`
-	Volume   float32 `json:"volume"`
-	IsBuy    bool    `json:"is_buy"`
 }
 
 // calculates percentage num/den
