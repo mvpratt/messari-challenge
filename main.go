@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 )
+
+//const MAX_GOROUTINES = 10
 
 type InputData struct {
 	ID       int     `json:"id"`
@@ -89,6 +92,7 @@ func processTrade(inputStr string, md map[int]MarketData) {
 	in := InputData{}
 	_ = json.Unmarshal([]byte(inputStr), &in) // todo - check error
 
+	fmt.Printf("processTrade(): %d\n", in.ID)
 	data := md[in.MarketID]
 	data.update(in)
 	md[in.MarketID] = data
@@ -113,14 +117,36 @@ func main() {
 	md := map[int]MarketData{}
 	totalTrades := 0
 
-	for scanner.Scan() {
-		inputStr = scanner.Text()
-		if inputStr == "END" {
-			break
+	inputCh := make(chan string)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// scan goroutine
+	go func() {
+		defer wg.Done()
+		for scanner.Scan() {
+			inputStr = scanner.Text()
+			fmt.Printf("scanner.Text(): %s\n", inputStr)
+			if inputStr == "END" {
+				break
+			}
+			inputCh <- inputStr
 		}
-		processTrade(inputStr, md)
-		totalTrades++
-	}
+		close(inputCh)
+	}()
+
+	// process goroutine
+	go func() {
+		defer wg.Done()
+		for val := range inputCh {
+			processTrade(val, md)
+			totalTrades++
+		}
+	}()
+
+	// wait until done
+	wg.Wait()
 
 	for _, item := range md {
 		m, _ := json.Marshal(item.getMarketTotals()) // todo - handle error
