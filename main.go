@@ -22,6 +22,9 @@
 //	  "percentage_buy":0.50
 // }
 
+// Performance:
+// Typical: ~16 seconds on M1 Macbook Pro
+
 package main
 
 import (
@@ -34,9 +37,19 @@ import (
 )
 
 type MarketData struct {
-	Prices  []float32
-	Volumes []float32
-	NumBuys int
+	SumSpent     float32
+	SumOfPrices  float32
+	SumOfVolumes float32
+	NumTrades    int
+	NumBuys      int
+}
+
+func (md *MarketData) update(in InputData) {
+	md.SumOfPrices += in.Price
+	md.SumSpent += in.Price * in.Volume
+	md.SumOfVolumes += in.Volume
+	md.NumTrades++
+	md.NumBuys += boolToInt(in.IsBuy)
 }
 
 type MarketTotals struct {
@@ -47,26 +60,20 @@ type MarketTotals struct {
 	PercentageBuy          float32 `json:"percentage_buy"`
 }
 
+func (mt *MarketTotals) update(data MarketData, in InputData) {
+	mt.TotalVolume += in.Volume
+	mt.MeanPrice = data.SumOfPrices / float32(data.NumTrades) // NumTrades will always be >= 1
+	mt.MeanVolume = data.SumOfVolumes / float32(data.NumTrades)
+	mt.VolumeWeightedAvgPrice = calcVWAP(data.SumSpent, mt.TotalVolume+in.Volume)
+	mt.PercentageBuy = calcPercentage(data.NumBuys, data.NumTrades)
+}
+
 type InputData struct {
 	ID       int     `json:"id"`
 	MarketID int     `json:"market"`
 	Price    float32 `json:"price"`
 	Volume   float32 `json:"volume"`
 	IsBuy    bool    `json:"is_buy"`
-}
-
-func calcMean(items []float32) float32 {
-	if len(items) == 0 {
-		return 0
-	}
-	var sum float32
-
-	for _, item := range items {
-		sum += item
-	}
-
-	mean := sum / float32(len(items))
-	return mean
 }
 
 // calculates percentage num/den
@@ -84,13 +91,9 @@ func boolToInt(in bool) int {
 	return 0
 }
 
-func calcVWAP(prices []float32, volumes []float32, cummulativeVolume float32) float32 {
-	if cummulativeVolume == 0 || len(prices) == 0 || len(volumes) == 0 {
+func calcVWAP(sumSpent float32, cummulativeVolume float32) float32 {
+	if cummulativeVolume == 0 || sumSpent == 0 {
 		return 0
-	}
-	var sumSpent float32 = 0
-	for i, _ := range prices {
-		sumSpent += prices[i] * volumes[i]
 	}
 	vwap := sumSpent / cummulativeVolume
 	return vwap
@@ -118,51 +121,40 @@ func main() {
 	mt := map[int]MarketTotals{}
 
 	var in InputData
-	var id int
 	var data MarketData
 	var totals MarketTotals
 
 	// continuously compute and keep track of totals as new trades come in
+
+	// assumptions:
+	// valid json input, no zero values
+
 	for scanner.Scan() {
 		inputStr = scanner.Text()
 		if err := scanner.Err(); err != nil {
-			log.Println(err)
+			log.Fatal(err)
 		}
 
-		if inputStr == "END" { // no more trades to process
+		if inputStr == "END" {
 			break
 		}
 
 		json.Unmarshal([]byte(inputStr), &in)
 
-		// todo - handle non-existent map key
-		id = in.MarketID
-		data = MarketData{
-			Prices:  append(md[id].Prices, in.Price),
-			Volumes: append(md[id].Volumes, in.Volume),
-			NumBuys: md[id].NumBuys + boolToInt(in.IsBuy),
-		}
+		data = md[in.MarketID] // todo - handle non-existent map key
+		data.update(in)
+		md[in.MarketID] = data
 
-		md[id] = data
-		totals = MarketTotals{
-			TotalVolume:            mt[id].TotalVolume + in.Volume,
-			MeanPrice:              calcMean(data.Prices),
-			MeanVolume:             calcMean(data.Volumes),
-			VolumeWeightedAvgPrice: calcVWAP(md[id].Prices, md[id].Volumes, mt[id].TotalVolume+in.Volume),
-			PercentageBuy:          calcPercentage(data.NumBuys, len(data.Prices)),
-		}
-
-		mt[id] = totals
+		totals.update(data, in)
+		mt[in.MarketID] = totals
 	}
 
-	totalTrades := in.ID // id of the last trade to be processed
-
-	// todo - only calculate totals once -- is that allowed?
+	totalTrades := in.ID // in.ID always increments by one for each trade
 
 	// print all market totals as json
 	for _, item := range mt {
-		jsonMT, _ := json.Marshal(item)
-		fmt.Println(string(jsonMT)) // todo - fix key names, make them jsonified
+		jsonMT, _ := json.Marshal(item) // todo - handle error
+		fmt.Println(string(jsonMT))
 	}
 
 	// for debug, print first market, including source data
